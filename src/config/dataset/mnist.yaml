@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: mnist
+size: 32
+channel: 1

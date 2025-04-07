@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: imagenet
+size: 128
+channel: 3

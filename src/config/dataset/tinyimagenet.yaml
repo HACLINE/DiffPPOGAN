@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: tinyimagenet
+size: 64
+channel: 3

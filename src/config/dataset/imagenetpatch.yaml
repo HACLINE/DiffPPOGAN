@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: imagenetpatch
+size: 256
+channel: 3

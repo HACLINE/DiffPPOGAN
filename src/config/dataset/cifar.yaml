@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: cifar10
+size: 32
+channel: 3

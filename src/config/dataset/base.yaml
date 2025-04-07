@@ -1,0 +1,6 @@
+name: null
+batch_size: ${batch_size}
+num_workers: 8
+normalize: True
+size: null
+channel: null

@@ -1,0 +1,5 @@
+real_image_path: null
+eval_fid_every: 50
+eval_fid_num: 5000
+eval_fid_steps: 100
+eval_fid_batch_size: 500

@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: dtd
+size: 128
+channel: 3

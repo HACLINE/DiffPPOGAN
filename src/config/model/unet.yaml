@@ -1,0 +1,21 @@
+_target_: src.models.diffusion.unet.UNetModel
+image_size: ${image_size}
+in_channels: ${channels}
+model_channels: 64
+out_channels: ${channels}
+num_res_blocks: 2
+attention_resolutions: [4]
+dropout: 0.0
+channel_mult: [1, 2, 2]
+conv_resample: true
+dims: 2
+num_classes: null
+use_checkpoint: false
+use_fp16: false
+num_heads: 4
+num_head_channels: 32
+num_heads_upsample: -1
+use_scale_shift_norm: false
+resblock_updown: false
+use_new_attention_order: false
+tune_timesteps: ${tune_timesteps}

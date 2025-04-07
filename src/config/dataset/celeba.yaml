@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: celeba
+size: 256
+channel: 3

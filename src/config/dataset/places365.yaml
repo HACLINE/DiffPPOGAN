@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: places365
+size: 128
+channel: 3

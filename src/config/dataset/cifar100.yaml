@@ -1,0 +1,4 @@
+defaults:
+  - cifar
+
+name: cifar100

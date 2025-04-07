@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: svhn
+size: 32
+channel: 3

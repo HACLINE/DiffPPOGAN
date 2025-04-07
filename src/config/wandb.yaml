@@ -1,0 +1,4 @@
+wandb:
+  project: DiffPPOGAN
+  name: null
+  mode: online

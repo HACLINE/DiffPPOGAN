@@ -1,0 +1,6 @@
+defaults:
+  - base
+
+name: tinyimagenetpatch
+size: 64
+channel: 3
