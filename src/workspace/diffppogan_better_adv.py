@@ -12,7 +12,7 @@ from torchvision.utils import make_grid
 from collections import OrderedDict, deque
 from omegaconf import OmegaConf
 
-class DiffPPOGANWorkspace(BaseWorkspace):
+class DiffPPOGANBetterAdvWorkspace(BaseWorkspace):
     def __init__(self):
         pass
 
@@ -113,7 +113,7 @@ class DiffPPOGANWorkspace(BaseWorkspace):
                 )
         returns = advantages + values
         # advantages = advantages / self.reversed_reward_cumsum.reshape(-1, 1).expand(self.tune_timesteps, self.sample_batch_size)
-        # advantages = (advantages - advantages.mean(dim=1, keepdim=True)) / (advantages.std(dim=1, keepdim=True) + 1e-8)
+        advantages = (advantages - advantages.mean(dim=1, keepdim=True)) / (advantages.std(dim=1, keepdim=True) + 1e-8)
         return advantages, returns
 
     def train_model(self):

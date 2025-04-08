@@ -1,7 +1,9 @@
 export DATA_DIR=/home/xqc/DiffPPOGAN/data
 
 python -m src.train.train \
-    gpu_id=2 \
-    fid.real_image_path=$DATA_DIR/real/cifar10/imgs \
-    ref_model_path=/home/xqc/DiffPPOGAN/models/ref/DDPM_cifar10_epoch200.pt \
-    wandb.name=base
+    cfg.gpu_id=5 \
+    cfg.fid.real_image_path=$DATA_DIR/real/cifar10/imgs \
+    cfg.ref_model_path=/home/xqc/DiffPPOGAN/models/ref/cifar.pt \
+    cfg.wandb.name=better_adv_lr1e-4 \
+    cfg.lr=1e-4 \
+    cfg.n_epochs=10000

@@ -1,0 +1,5 @@
+defaults:
+  - _self_
+  - cfg: betteradv
+
+_target_: ${cfg._target_}

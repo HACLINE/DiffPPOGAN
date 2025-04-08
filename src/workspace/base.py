@@ -14,12 +14,15 @@ from pytorch_fid import fid_score
 from datetime import datetime
 
 class BaseWorkspace:
-    def __init__(self, cfg, device):
+    def __init__(self):
+        pass
+
+    def setup(self, cfg):
         self.cfg = cfg
-        self.device = device
+        self.device = torch.device(f"cuda:{cfg.gpu_id}" if torch.cuda.is_available() and cfg.gpu_id >= 0 else "cpu")
         self.tune_timesteps = cfg.tune_timesteps
-        self.setmodel(cfg, device)
-        self.setdataset(cfg, device)
+        self.setmodel(cfg, self.device)
+        self.setdataset(cfg, self.device)
 
         self.vae =  AutoencoderKL.from_pretrained(f"stabilityai/sd-vae-ft-mse").to(self.device) if cfg.latent else None
         self.channels = cfg.channels
@@ -60,6 +63,13 @@ class BaseWorkspace:
         self.models_dir = Path("models") / self.cur_time_string
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
+    def load_checkpoint(self, checkpoint_path):
+        '''
+        Load the model checkpoint
+        :param checkpoint_path: path to the checkpoint
+        '''
+        self.model.load_state_dict(torch.load(checkpoint_path))
+        self.model.eval()
 
     def setmodel(self, cfg, device):
         self.model = get_model(cfg.model).to(device)
@@ -79,6 +89,7 @@ class BaseWorkspace:
         Sample images for FID calculation
         :param batch_size: batch size
         '''
+        self.load_checkpoint(self.cfg.checkpoint)
         if 'epoch' in self.cfg.checkpoint:
             ep = int(self.cfg.checkpoint.split('epoch')[1].split('.')[0])
         else:
@@ -112,6 +123,7 @@ class BaseWorkspace:
         Sample images for FID calculation
         :param batch_size: batch size
         '''
+        self.load_checkpoint(self.cfg.checkpoint)
         if 'epoch' in self.cfg.checkpoint:
             ep = int(self.cfg.checkpoint.split('epoch')[1].split('.')[0])
         else:
@@ -150,7 +162,7 @@ class BaseWorkspace:
         self.model.eval()
 
         date = self.cur_time_string
-        path = Path("fid_tmp") / self.dataset / f"{date}_timesteps_{self.eval_fid_steps}_ep{self.epoch}"
+        path = Path("fid_tmp") / self.dataset / f"{date}_timesteps_{self.eval_fid_steps}_ep{self.epoch}_model"
         path.mkdir(parents=True, exist_ok=True)
         cnt = 0
 
@@ -158,6 +170,46 @@ class BaseWorkspace:
 
         for i in tqdm(range(self.eval_fid_num//self.eval_fid_batch_size), desc='FID Sampling', leave=True):
             samps = self.sampler.sample(model=self.model, image_size=self.img_size, batch_size=self.eval_fid_batch_size, channels=self.channels)[-1]
+
+            if self.vae is not None:
+                samps = torch.tensor(samps, device=self.device)
+                samps = self.vae.decode(samps / 0.18215).sample 
+                samps = samps.cpu().detach().numpy()
+
+            samps = samps * 0.5 + 0.5
+            samps = samps.clip(0, 1)
+            samps = samps.transpose(0,2,3,1)
+            samps = (samps*255).astype(np.uint8)
+            for samp in samps:
+                cv2.imwrite(path / f"{cnt}.png", cv2.cvtColor(samp, cv2.COLOR_RGB2BGR) if samp.shape[-1] == 3 else samp)
+                cnt += 1
+        
+        self.sampler.set_sample_timesteps(self.sample_timesteps)
+        
+        fake_m, fake_s = fid_score.compute_statistics_of_path(str(path), self.inception_model, 64, 2048, self.device, 8)
+        fid_value = fid_score.calculate_frechet_distance(fake_m, fake_s, self.real_m, self.real_s)
+
+        return fid_value
+    
+    @torch.no_grad()
+    def eval_ema_fid(self):
+        '''
+        Evaluate FID
+        :param batch_size: batch size
+        '''
+        if self.vae is not None:
+            self.vae.eval()
+        self.ema.eval()
+
+        date = self.cur_time_string
+        path = Path("fid_tmp") / self.dataset / f"{date}_timesteps_{self.eval_fid_steps}_ep{self.epoch}_ema"
+        path.mkdir(parents=True, exist_ok=True)
+        cnt = 0
+
+        self.sampler.set_sample_timesteps(self.eval_fid_steps)
+
+        for i in tqdm(range(self.eval_fid_num//self.eval_fid_batch_size), desc='FID Sampling', leave=True):
+            samps = self.sampler.sample(model=self.ema, image_size=self.img_size, batch_size=self.eval_fid_batch_size, channels=self.channels)[-1]
 
             if self.vae is not None:
                 samps = torch.tensor(samps, device=self.device)

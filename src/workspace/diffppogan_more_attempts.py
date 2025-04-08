@@ -11,8 +11,9 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid
 from collections import OrderedDict, deque
 from omegaconf import OmegaConf
+import copy
 
-class DiffPPOGANWorkspace(BaseWorkspace):
+class DiffPPOGANMoreAttemptsWorkspace(BaseWorkspace):
     def __init__(self):
         pass
 
@@ -72,7 +73,8 @@ class DiffPPOGANWorkspace(BaseWorkspace):
         self.kl_coef = cfg.kl_coef
         self.n_epochs_train_only_value = cfg.n_epochs_train_only_value
         self.real_fake_gap = cfg.real_fake_gap
-        
+        self.cool_down = cfg.cool_down
+        self.reset_gap = cfg.reset_gap
 
     def update_schedule(self):
         self.reward_schedule = self.reward_schedule * self.reward_schedule_step
@@ -113,7 +115,7 @@ class DiffPPOGANWorkspace(BaseWorkspace):
                 )
         returns = advantages + values
         # advantages = advantages / self.reversed_reward_cumsum.reshape(-1, 1).expand(self.tune_timesteps, self.sample_batch_size)
-        # advantages = (advantages - advantages.mean(dim=1, keepdim=True)) / (advantages.std(dim=1, keepdim=True) + 1e-8)
+        advantages = (advantages - advantages.mean(dim=1, keepdim=True)) / (advantages.std(dim=1, keepdim=True) + 1e-8)
         return advantages, returns
 
     def train_model(self):
@@ -151,7 +153,9 @@ class DiffPPOGANWorkspace(BaseWorkspace):
         train_critic = True
         history_real_validities = deque(maxlen=10)
         history_fake_validities = deque(maxlen=10)
-        cool_down = 0
+        cool_down = self.cool_down
+        minimum_FID = np.inf
+        minimum_FID_model_critic = [None, None]
         FID_list = []
         for epoch in epoch_bar:
             metrics = {}
@@ -331,10 +335,11 @@ class DiffPPOGANWorkspace(BaseWorkspace):
             plt.close()
 
 
-            if epoch < self.n_epochs_train_only_value:
+            if cool_down > 0:
                 train_generator = False
                 train_discriminator = True
                 train_critic = True
+                cool_down -= 1
             elif np.mean(history_fake_validities) < np.mean(history_real_validities) - self.real_fake_gap:
                 cool_down = 20
                 train_generator = True
@@ -565,6 +570,7 @@ class DiffPPOGANWorkspace(BaseWorkspace):
                 'lr/model': model_optimizer.param_groups[0]['lr'],
                 'lr/critic': critic_optimizer.param_groups[0]['lr'],
                 'lr/discriminator': discriminator_optimizer.param_groups[0]['lr'],
+                'freeze/cool_down': cool_down,
             })
 
             update_ema(self.ema, self.model, self.ema_rate)
@@ -603,6 +609,17 @@ class DiffPPOGANWorkspace(BaseWorkspace):
                 FID_list.append(self.model_update_epoch)
                 fid_score = self.eval_fid()
                 metrics[f'FID/FID_num={self.eval_fid_num}_step={self.eval_fid_steps}'] = fid_score
+                if fid_score < minimum_FID:
+                    minimum_FID = fid_score
+                    minimum_FID_model_critic[0] = copy.deepcopy(self.model.state_dict())
+                    minimum_FID_model_critic[1] = copy.deepcopy(self.critic.state_dict())
+                metrics['FID/minimum_FID'] = minimum_FID
+                metrics['freeze/reset'] = 0
+                if fid_score > minimum_FID + self.reset_gap:
+                    self.model.load_state_dict(minimum_FID_model_critic[0])
+                    self.critic.load_state_dict(minimum_FID_model_critic[1])
+                    cool_down = self.cool_down
+                    metrics['freeze/reset'] = 1
                 ema_fid_score = self.eval_ema_fid()
                 metrics[f'FID/ema_FID_num={self.eval_fid_num}_step={self.eval_fid_steps}'] = ema_fid_score
 

@@ -1,0 +1,30 @@
+_target_: src.models.diffusion.google_cifar10.UNetModel
+sample_size: 32
+in_channels: 3
+out_channels: 3
+center_input_sample: False
+time_embedding_type: positional
+time_embedding_dim: null
+freq_shift: 1
+flip_sin_to_cos: False
+down_block_types: ['DownBlock2D', 'AttnDownBlock2D', 'DownBlock2D', 'DownBlock2D']
+mid_block_type: UNetMidBlock2D
+up_block_types: ['UpBlock2D', 'UpBlock2D', 'AttnUpBlock2D', 'UpBlock2D']
+block_out_channels: [128, 256, 256, 256]
+layers_per_block: 2
+mid_block_scale_factor: 1
+downsample_padding: 0
+downsample_type: conv
+upsample_type: conv
+dropout: 0.0
+act_fn: silu
+attention_head_dim: null
+norm_num_groups: 32
+attn_norm_num_groups: null
+norm_eps: 1e-06
+resnet_time_scale_shift: default
+add_attention: True
+class_embed_type: null
+num_class_embeds: null
+num_train_timesteps: null
+tune_timesteps: ${tune_timesteps}

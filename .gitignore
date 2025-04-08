@@ -260,4 +260,8 @@ src/generativezoo/models/SD/wandb/
 *.egg-info
 *.png
 /wandb/
+.hydra
+/fid_samples
+/fid_5k_samples
+/fid_tmp
 # EOF
