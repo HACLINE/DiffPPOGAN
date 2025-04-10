@@ -1,4 +1,4 @@
-export DATA_DIR=/home/xqc/DiffPPOGAN/data
+export DATA_DIR=/home/wzh/nfsdata/projects/DiffPPOGAN/data
 
 python -m src.train.train \
     cfg.gpu_id=5 \

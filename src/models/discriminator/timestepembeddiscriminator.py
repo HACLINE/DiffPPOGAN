@@ -15,3 +15,16 @@ class TimestepEmbedDiscriminator(TimestepEmbedEncoder):
         x = super().forward(x, timesteps)
         x = self.final_layer(x)
         return x
+
+
+class TimestepEmbedRpDiscriminator(TimestepEmbedEncoder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.final_layer = nn.Sequential(
+            nn.Linear(self.output_size, 1),
+        )
+    
+    def forward(self, x, timesteps):
+        x = super().forward(x, timesteps)
+        x = self.final_layer(x)
+        return x
