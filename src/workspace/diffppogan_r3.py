@@ -118,12 +118,12 @@ class DiffPPOGANR3Workspace(BaseWorkspace):
         return advantages, returns
     
     def zero_centered_grad_penalty(self, x, d):
-        grad, = torch.autograd.grad(
+        grad = torch.autograd.grad(
             outputs=d.sum(),
             inputs=x,
-            create_graph=True
-        )
-        return grad.square()
+            create_graph=True,
+        )[0]
+        return grad.square().sum([1, 2, 3])
 
     def train_model(self):
         wandb.init(
@@ -406,6 +406,9 @@ class DiffPPOGANR3Workspace(BaseWorkspace):
                     batch_timesteps = b_timesteps[batch_inds]
                     batch_gt_obs = self.forward_diffusion_model.q_sample(x_start=real_imgs, t=batch_timesteps)
                 
+                batch_obs.requires_grad_()
+                batch_gt_obs.requires_grad_()
+                
                 fake_validity = self.discriminator(batch_obs, batch_timesteps).view(-1, 1)
                 real_validity = self.discriminator(batch_gt_obs, batch_timesteps).view(-1, 1)
 
@@ -415,8 +418,9 @@ class DiffPPOGANR3Workspace(BaseWorkspace):
                 original_loss = adversarial_loss(-discrepancy) * d_loss_weights
                 r1 = self.zero_centered_grad_penalty(batch_gt_obs, real_validity) * d_loss_weights
                 r2 = self.zero_centered_grad_penalty(batch_obs, fake_validity) * d_loss_weights
+                batch_obs = batch_obs.detach()
+                batch_gt_obs = batch_gt_obs.detach()
                 d_loss = original_loss + (self.grad_penalty_gamma / 2) * (r1 + r2)
-                # d_loss = adversarial_loss(fake_validity, fake) * d_loss_weights + adversarial_loss(real_validity, valid) * d_loss_weights
                 d_loss = d_loss.mean(dim=(0, 1))
 
                 if train_discriminator:
@@ -443,9 +447,17 @@ class DiffPPOGANR3Workspace(BaseWorkspace):
                 batch = batch[0].to(self.device)
             batch_gt_obs = batch[:next_obs.shape[0]]
             batch_timesteps = torch.full((next_obs.shape[0],), -1, device=self.device)
+            batch_gt_obs.requires_grad_()
+            next_obs.requires_grad_()
             real_validity = self.discriminator(batch_gt_obs, batch_timesteps).view(-1, 1)
             fake_validity = self.discriminator(next_obs, batch_timesteps).view(-1, 1)
-            d_loss = adversarial_loss(fake_validity, torch.zeros_like(fake_validity)) + adversarial_loss(real_validity, torch.ones_like(real_validity))
+            discrepancy = real_validity - fake_validity
+            original_loss = adversarial_loss(-discrepancy)
+            r1 = self.zero_centered_grad_penalty(batch_gt_obs, real_validity)
+            r2 = self.zero_centered_grad_penalty(next_obs, fake_validity)
+            next_obs = next_obs.detach()
+            batch_gt_obs = batch_gt_obs.detach()
+            d_loss = original_loss + (self.grad_penalty_gamma / 2) * (r1 + r2)
             d_loss = d_loss.mean(dim=(0, 1))
             if train_discriminator:
                 discriminator_optimizer.zero_grad()

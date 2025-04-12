@@ -57,7 +57,7 @@ class BaseWorkspace:
             if (self.real_image_path.parent / f"statistics.pt").exists():
                 self.real_m, self.real_s = torch.load(self.real_image_path.parent / f"statistics.pt", weights_only=False)
             else:
-                self.real_m, self.real_s = fid_score.compute_statistics_of_path(self.real_image_path, self.inception_model, 64, 2048, self.device, 8)
+                self.real_m, self.real_s = fid_score.compute_statistics_of_path(str(self.real_image_path), self.inception_model, 64, 2048, self.device, 8)
                 torch.save((self.real_m, self.real_s), self.real_image_path.parent / f"statistics.pt")
 
         self.models_dir = Path("models") / self.cur_time_string
