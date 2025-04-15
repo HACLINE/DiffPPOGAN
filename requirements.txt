@@ -39,3 +39,5 @@ bitsandbytes
 zuko
 torchdiffeq
 lpips
+hydra-core
+pytorch_fid

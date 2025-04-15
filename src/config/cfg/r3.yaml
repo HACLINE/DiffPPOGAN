@@ -1,0 +1,67 @@
+defaults:
+    - _self_
+    - dataset: cifar
+    # - model: google_cifar10
+    - model: unet
+    - critic: base
+    - discriminator: r3
+    - fid: base
+    - wandb
+
+hydra:
+    run:
+        dir: "."
+
+_target_: src.workspace.diffppogan_r3.DiffPPOGANR3Workspace
+
+# train
+lr: 2e-4
+std: 2e-2
+clip: 0.1
+ddpm: 0.0
+decay: 1e-7
+latent: false
+dropout: 0
+kl_coef: 0
+vf_coef: 1
+beta_end: 0.02
+discount: 0.997
+ema_rate: 0.999
+n_epochs: 1000
+norm_adv: false
+snapshot: 50
+clip_coef: 0.2
+lr_critic: 0.0003
+ref_timesteps: 800
+tune_timesteps: ${eval:'${cfg.timesteps} - ${cfg.ref_timesteps}'}
+ref_sample_timesteps: 100
+sample_timesteps: 100
+target_kl: 0.1
+timesteps: 1000
+batch_size: 128
+beta_start: 1e-4
+clip_vloss: true
+gae_lambda: 0.995
+reward_max: 1
+reward_min: -1
+entropy_coef: 0
+lr_discriminator: 0.0003
+sample_and_save_freq: 5
+reward_schedule_decay: 0
+n_epochs_train_only_value: 20
+num_samples: 16
+real_fake_gap: 0.3
+ddpm_start: 0.0
+ddpm_end: 0.0
+snapshot_per_epochs: 50
+sample_batch_size: 32
+grad_penalty_gamma: 0.02
+
+# dataset
+image_size: ${cfg.dataset.size}
+channels: ${cfg.dataset.channel}
+
+# others
+gpu_id: 0
+ref_model_path: null
+checkpoint: null
