@@ -1,5 +1,9 @@
 defaults:
   - _self_
-  - cfg: r3
+  - cfg: google_cifar
+
+hydra:
+  run:
+    dir: "."
 
 _target_: ${cfg._target_}

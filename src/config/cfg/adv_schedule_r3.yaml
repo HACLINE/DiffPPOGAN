@@ -12,7 +12,7 @@ hydra:
   run:
     dir: "."
 
-_target_: src.workspace.diffppogan_more_attempts.DiffPPOGANMoreAttemptsWorkspace
+_target_: src.workspace.diffppogan_adv_schedule_r3.DiffPPOGANAdvScheduleR3Workspace
 
 # train
 lr: 2e-4
@@ -46,7 +46,7 @@ reward_max: 1
 reward_min: -1
 entropy_coef: 0
 lr_discriminator: 0.0005
-sample_and_save_freq: 5
+sample_and_save_freq: 50
 reward_schedule_decay: 0
 n_epochs_train_only_value: 20
 num_samples: 16
@@ -57,6 +57,7 @@ snapshot_per_epochs: 50
 sample_batch_size: 32
 cool_down: 20
 reset_gap: 1.0
+grad_penalty_gamma: 0.02
 
 # dataset
 image_size: ${cfg.dataset.size}
@@ -66,3 +67,5 @@ channels: ${cfg.dataset.channel}
 gpu_id: 0
 ref_model_path: null
 checkpoint: null
+curve_every: 10
+reset_discriminator: false

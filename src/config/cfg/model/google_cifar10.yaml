@@ -1,4 +1,4 @@
-_target_: src.models.diffusion.google_cifar10.UNetModel
+_target_: src.models.diffusion.diffuser.UNetModel
 sample_size: 32
 in_channels: 3
 out_channels: 3
@@ -27,4 +27,4 @@ add_attention: True
 class_embed_type: null
 num_class_embeds: null
 num_train_timesteps: null
-tune_timesteps: ${tune_timesteps}
+tune_timesteps: ${cfg.tune_timesteps}

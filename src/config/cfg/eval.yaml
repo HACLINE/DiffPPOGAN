@@ -1,0 +1,40 @@
+defaults:
+  - _self_
+  - dataset: cifar
+  # - model: google_cifar10
+  - model: unet
+  - critic: base
+  - discriminator: base
+  - fid: base
+  - wandb
+
+hydra:
+  run:
+    dir: "."
+
+_target_: src.workspace.eval.EvalWorkspace
+
+# train
+ddpm: 0.0
+decay: 1e-7
+latent: false
+dropout: 0
+beta_end: 0.02
+ref_timesteps: 600
+tune_timesteps: ${eval:'${cfg.timesteps} - ${cfg.ref_timesteps}'}
+sample_timesteps: 100
+timesteps: 1000
+beta_start: 1e-4
+batch_size: 1
+ema_rate: 0.999
+
+# dataset
+image_size: ${cfg.dataset.size}
+channels: ${cfg.dataset.channel}
+
+# others
+gpu_id: 0
+ref_model_path: null
+checkpoint: null
+curve_every: 10
+reset_discriminator: false

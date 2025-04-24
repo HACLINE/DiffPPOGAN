@@ -116,6 +116,7 @@ class BaseWorkspace:
             for samp in samps:
                 cv2.imwrite(path / f"{cnt}.png", cv2.cvtColor(samp, cv2.COLOR_RGB2BGR) if samp.shape[-1] == 3 else samp)
                 cnt += 1  
+        return path
 
     @torch.no_grad()
     def fid_5k_sample(self, batch_size=16):
@@ -150,6 +151,7 @@ class BaseWorkspace:
             for samp in samps:
                 cv2.imwrite(path / f"{cnt}.png", cv2.cvtColor(samp, cv2.COLOR_RGB2BGR) if samp.shape[-1] == 3 else samp)
                 cnt += 1  
+        return path
 
     @torch.no_grad()
     def eval_fid(self):

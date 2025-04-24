@@ -1,5 +1,9 @@
 defaults:
   - _self_
-  - cfg: betteradv
+  - cfg: eval
+
+hydra:
+  run:
+    dir: "."
 
 _target_: ${cfg._target_}
