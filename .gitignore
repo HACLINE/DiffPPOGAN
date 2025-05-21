@@ -173,7 +173,6 @@ dmypy.json
 # TFlite
 *.tflite
 # Pytorch models
-*.pt
 *.safetensors
 *.bin
 *.pkl

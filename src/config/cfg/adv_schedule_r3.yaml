@@ -32,10 +32,11 @@ norm_adv: false
 snapshot: 50
 clip_coef: 0.2
 lr_critic: 0.0005
-ref_timesteps: 800
+ref_timesteps: 600
 tune_timesteps: ${eval:'${cfg.timesteps} - ${cfg.ref_timesteps}'}
 ref_sample_timesteps: 100
 sample_timesteps: 100
+train_timesteps: 1000
 target_kl: 0.1
 timesteps: 1000
 batch_size: 128
@@ -46,14 +47,14 @@ reward_max: 1
 reward_min: -1
 entropy_coef: 0
 lr_discriminator: 0.0005
-sample_and_save_freq: 50
+sample_and_save_freq: 100
 reward_schedule_decay: 0
 n_epochs_train_only_value: 20
 num_samples: 16
 real_fake_gap: 0.3
 ddpm_start: 0.0
 ddpm_end: 0.0
-snapshot_per_epochs: 50
+snapshot_per_epochs: 100
 sample_batch_size: 32
 cool_down: 20
 reset_gap: 1.0
@@ -68,4 +69,4 @@ gpu_id: 0
 ref_model_path: null
 checkpoint: null
 curve_every: 10
-reset_discriminator: false
+reset_discriminator: true

@@ -23,13 +23,15 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
         self.forward_diffusion_model = ForwardDiffusion(self.scheduler.sqrt_alphas_cumprod, self.scheduler.sqrt_one_minus_alphas_cumprod)
         self.sampler = Sampler(self.scheduler.betas, cfg.timesteps, cfg.sample_timesteps, cfg.ddpm)
         self.ref_rollout = Sampler(self.scheduler.betas, cfg.timesteps, cfg.ref_sample_timesteps, cfg.ddpm)
-        self.rollout = Sampler(self.scheduler.betas, cfg.timesteps, cfg.timesteps, cfg.ddpm)
+        self.rollout = Sampler(self.scheduler.betas, cfg.timesteps, cfg.train_timesteps, cfg.ddpm)
         self.n_epochs = cfg.n_epochs
         self.timesteps = cfg.timesteps
         self.ref_timesteps = cfg.ref_timesteps
+        self.train_timesteps = cfg.train_timesteps
         self.ref_sample_timesteps = cfg.ref_sample_timesteps
         assert (self.timesteps % self.ref_sample_timesteps) == 0
         assert (self.ref_sample_timesteps % (self.timesteps // self.ref_sample_timesteps)) == 0
+        assert (self.timesteps % self.train_timesteps) == 0
         self.tune_timesteps = self.timesteps - self.ref_timesteps
         self.sample_and_save_freq = cfg.sample_and_save_freq
         self.lr = cfg.lr
@@ -86,11 +88,13 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
         for i in range(1, self.tune_timesteps):
             self.reward_cumsum[i] += self.reward_cumsum[i - 1] * self.discount
         self.adv_schedule = self.reward_cumsum / self.reward_schedule.cumsum(dim=0)
-        self.reversed_adv_schedule = self.adv_schedule[:self.tune_timesteps].flip(0).to(self.device)
-        self.reversed_reward_cumsum = self.reward_cumsum[:self.tune_timesteps].flip(0).to(self.device)
+        # self.reversed_adv_schedule = self.adv_schedule[:self.tune_timesteps].flip(0).to(self.device)
+        self.reversed_adv_schedule = torch.tensor([self.adv_schedule[i] for i in range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps))]).flip(0).to(self.device)
+        # self.reversed_reward_cumsum = self.reward_cumsum[:self.tune_timesteps].flip(0).to(self.device)
+        self.reversed_reward_cumsum = torch.tensor([self.reward_cumsum[i] for i in range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps))]).flip(0).to(self.device)
         self.discriminator_schedule = np.power(self.discount, self.tune_timesteps) * self.reward_schedule * self.discriminator_discount
         # self.discriminator_schedule = self.reward_schedule
-        self.total_discriminator_weight = self.discriminator_schedule[:self.tune_timesteps].sum()
+        self.total_discriminator_weight = torch.tensor([self.discriminator_schedule[i] for i in range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps))]).sum()
 
     def set_std_schedule(self, ddpm):
         base = np.sqrt((1 - self.scheduler.alphas_cumprod) / self.scheduler.alphas) - np.sqrt(1 - self.scheduler.alphas_cumprod_prev)
@@ -115,8 +119,8 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
     ):
         advantages = torch.zeros_like(values)
         lastgaelam = 0
-        for t in reversed(range(self.tune_timesteps)):
-            if t == self.tune_timesteps - 1:
+        for t in reversed(range(self.tune_timesteps // (self.timesteps // self.train_timesteps))):
+            if t == self.tune_timesteps // (self.timesteps // self.train_timesteps) - 1:
                 delta = rewards[t] - values[t]
                 advantages[t] = lastgaelam = (
                     delta
@@ -129,7 +133,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
         returns = advantages + values
         # advantages = advantages / self.reversed_reward_cumsum.reshape(-1, 1).expand(self.tune_timesteps, self.sample_batch_size)
         advantages = (advantages - advantages.mean(dim=1, keepdim=True)) / (advantages.std(dim=1, keepdim=True) + 1e-8)
-        advantages = advantages * self.reversed_adv_schedule.reshape(-1, 1).expand(self.tune_timesteps, self.sample_batch_size)
+        advantages = advantages * self.reversed_adv_schedule.reshape(-1, 1).expand(self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size)
         return advantages, returns
 
     def train_model(self):
@@ -180,36 +184,36 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
             acc_loss = 0.0
 
             self.epoch = epoch
-            obs = torch.zeros((self.tune_timesteps, self.sample_batch_size, batch.shape[1], batch.shape[2], batch.shape[3]), device=self.device, dtype=torch.float32) # (timesteps, batch_size, channels, height, width)
-            timesteps = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.long)
-            logprobs = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.float32)
-            actions = torch.zeros((self.tune_timesteps, self.sample_batch_size, batch.shape[1], batch.shape[2], batch.shape[3]), device=self.device, dtype=torch.float32) # (timesteps, batch_size, channels, height, width)
-            values = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.float32) # (timesteps, batch_size)
-            rewards = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.float32) # (timesteps, batch_size)
+            obs = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size, batch.shape[1], batch.shape[2], batch.shape[3]), device=self.device, dtype=torch.float32) # (timesteps, batch_size, channels, height, width)
+            timesteps = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.long)
+            logprobs = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.float32)
+            actions = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size, batch.shape[1], batch.shape[2], batch.shape[3]), device=self.device, dtype=torch.float32) # (timesteps, batch_size, channels, height, width)
+            values = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.float32) # (timesteps, batch_size)
+            rewards = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.float32) # (timesteps, batch_size)
             next_obs = torch.randn((self.sample_batch_size, batch.shape[1], batch.shape[2], batch.shape[3]), device=self.device, dtype=torch.float32)
-            fake_validities = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.float32)
-            action_mu = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.float32)
-            action_sigma = torch.zeros((self.tune_timesteps, self.sample_batch_size), device=self.device, dtype=torch.float32)
+            fake_validities = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.float32)
+            action_mu = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.float32)
+            action_sigma = torch.zeros((self.tune_timesteps // (self.timesteps // self.train_timesteps), self.sample_batch_size), device=self.device, dtype=torch.float32)
             with torch.no_grad():
                 for i in tqdm(range(self.timesteps - 1, self.tune_timesteps - 1, -self.timesteps // self.ref_sample_timesteps), desc='Rolling image trajectory with ref model', leave=False):
                     next_obs = self.ref_rollout.p_sample(self.model, next_obs, torch.full((self.sample_batch_size,), i, device=self.device), i)
                 total_reward = torch.zeros((self.sample_batch_size,), device=self.device, dtype=torch.float32)
-                for i in tqdm(range(self.tune_timesteps - 1, -1, -1), desc='Rolling image trajectory with finetuned model', leave=False):
-                    obs[self.tune_timesteps - i - 1] = next_obs
-                    timesteps[self.tune_timesteps - i - 1] = torch.full((self.sample_batch_size,), i, device=self.device)
-                    action = self.model(next_obs, timesteps[self.tune_timesteps - i - 1])
-                    action_mu[self.tune_timesteps - i - 1] = (np.sqrt(1 - self.std ** 2) * self.k_ddpm[i]).to(self.device)
-                    action_sigma[self.tune_timesteps - i - 1] = (torch.sqrt(self.std ** 2 * self.k_ddpm[i] ** 2 + self.std_ddpm[i] ** 2)).to(self.device)
-                    dist = torch.distributions.Normal(action_mu[self.tune_timesteps - i - 1].reshape(-1, 1, 1, 1) * action, action_sigma[self.tune_timesteps - i - 1].reshape(-1, 1, 1, 1))
+                for i in tqdm(range(self.tune_timesteps - 1, -1, -self.timesteps // self.train_timesteps), desc='Rolling image trajectory with finetuned model', leave=False):
+                    obs[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = next_obs
+                    timesteps[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = torch.full((self.sample_batch_size,), i, device=self.device)
+                    action = self.model(next_obs, timesteps[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)])
+                    action_mu[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = (np.sqrt(1 - self.std ** 2) * self.k_ddpm[i]).to(self.device)
+                    action_sigma[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = (torch.sqrt(self.std ** 2 * self.k_ddpm[i] ** 2 + self.std_ddpm[i] ** 2)).to(self.device)
+                    dist = torch.distributions.Normal(action_mu[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)].reshape(-1, 1, 1, 1) * action, action_sigma[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)].reshape(-1, 1, 1, 1))
                     action = dist.sample()
-                    logprobs[self.tune_timesteps - i - 1] = dist.log_prob(action).mean(dim=(1, 2, 3))
-                    values[self.tune_timesteps - i - 1] = self.critic(next_obs, timesteps[self.tune_timesteps - i - 1]).reshape(-1)
+                    logprobs[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = dist.log_prob(action).mean(dim=(1, 2, 3))
+                    values[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = self.critic(next_obs, timesteps[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)]).reshape(-1)
 
-                    actions[self.tune_timesteps - i - 1] = action
-                    next_obs = self.rollout.p_action_sample(action, next_obs, timesteps[self.tune_timesteps - i - 1], i)
-                    fake_validities[self.tune_timesteps - i - 1] = self.discriminator(next_obs, torch.full((self.sample_batch_size,), i - 1, device=self.device)).view(-1)
-                    rewards[self.tune_timesteps - i - 1] = (fake_validities[self.tune_timesteps - i - 1] * (self.reward_max - self.reward_min) + self.reward_min) * self.reward_schedule[i]
-                    total_reward += rewards[self.tune_timesteps - i - 1]
+                    actions[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = action
+                    next_obs = self.rollout.p_action_sample(action, next_obs, timesteps[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)], i)
+                    fake_validities[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = self.discriminator(next_obs, torch.full((self.sample_batch_size,), i - 1, device=self.device)).view(-1)
+                    rewards[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] = (fake_validities[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)] * (self.reward_max - self.reward_min) + self.reward_min) * self.reward_schedule[i]
+                    total_reward += rewards[(self.tune_timesteps - i - 1) // (self.timesteps // self.train_timesteps)]
 
             metrics.update({
                 'total_reward': total_reward.mean().item(),
@@ -234,7 +238,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
 
             if self.curve_every > 0 and epoch % self.curve_every == 0:
                 plot_curve(
-                    x_vals=list(reversed(range(self.tune_timesteps))),
+                    x_vals=list(reversed(range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)))),
                     y_vals=values.mean(dim=1),
                     x_label='Timesteps',
                     y_label='Value',
@@ -245,7 +249,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 plt.close()
 
                 plot_curve(
-                    x_vals=list(reversed(range(self.tune_timesteps))),
+                    x_vals=list(reversed(range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)))),
                     y_vals=self.reversed_adv_schedule,
                     x_label='Timesteps',
                     y_label='Adv_Schedule',
@@ -256,7 +260,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 plt.close()
 
                 plot_curve(
-                    x_vals=range(self.tune_timesteps),
+                    x_vals=range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)),
                     y_vals=advantages.mean(dim=1),
                     x_label='Timesteps',
                     y_label='Advantage',
@@ -267,7 +271,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 plt.close()
 
                 plot_curve(
-                    x_vals=list(reversed(range(self.tune_timesteps))),
+                    x_vals=list(reversed(range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)))),
                     y_vals=returns.mean(dim=1),
                     x_label='Timesteps',
                     y_label='Return',
@@ -278,7 +282,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 plt.close()
 
                 plot_curve(
-                    x_vals=list(reversed(range(self.tune_timesteps))), 
+                    x_vals=list(reversed(range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)))), 
                     y_vals=rewards.mean(dim=1), 
                     x_label='Timesteps', 
                     y_label='Reward',
@@ -290,7 +294,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 metrics['Curve/Reward'] = wandb.Image(plt)
                 plt.close()
                 plot_curve(
-                    x_vals=list(reversed(range(self.tune_timesteps))), 
+                    x_vals=list(reversed(range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)))), 
                     y_vals=fake_validities.mean(dim=1), 
                     x_label='Timesteps', 
                     y_label='Fake Validity',
@@ -302,7 +306,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 metrics['Curve/Fake Validity'] = wandb.Image(plt)
                 plt.close()
                 plot_curve(
-                    x_vals=range(self.tune_timesteps), 
+                    x_vals=range(0, self.tune_timesteps), 
                     y_vals=self.reward_schedule[:self.tune_timesteps],
                     x_label='Timesteps',
                     y_label='Reward Schedule',
@@ -314,7 +318,7 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 metrics['Curve/Reward Schedule'] = wandb.Image(plt)
                 plt.close()
                 plot_curve(
-                    x_vals=range(self.tune_timesteps), 
+                    x_vals=range(0, self.tune_timesteps), 
                     y_vals=self.discriminator_schedule[:self.tune_timesteps].cpu().numpy(),
                     x_label='Timesteps',
                     y_label='Discriminator Schedule',
@@ -326,8 +330,8 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 metrics['Curve/Discriminator Schedule'] = wandb.Image(plt)
                 plt.close()
                 plot_curve(
-                    x_vals=range(self.tune_timesteps), 
-                    y_vals=action_mu[:self.tune_timesteps][:, 0].cpu().flip(0).numpy(),
+                    x_vals=range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)), 
+                    y_vals=action_mu[:, 0].cpu().flip(0).numpy(),
                     x_label='Timesteps',
                     y_label='Action Mu',
                     x_min=0,
@@ -336,8 +340,8 @@ class DiffPPOGANAdvScheduleR3Workspace(BaseWorkspace):
                 metrics['Curve/Action Mu'] = wandb.Image(plt)
                 plt.close()
                 plot_curve(
-                    x_vals=range(self.tune_timesteps), 
-                    y_vals=action_sigma[:self.tune_timesteps][:, 0].cpu().flip(0).numpy(),
+                    x_vals=range(0, self.tune_timesteps, (self.timesteps // self.train_timesteps)), 
+                    y_vals=action_sigma[:, 0].cpu().flip(0).numpy(),
                     x_label='Timesteps',
                     y_label='Action Sigma',
                     x_min=0,

@@ -1,6 +1,6 @@
 from src.models import get_model
 from src.data.Dataloaders import pick_dataset
-from src.utils.util import LinearScheduler, extract_time_index, ForwardDiffusion
+from src.utils.util import LinearScheduler, extract_time_index, ForwardDiffusion, Sampler
 
 import torch
 from diffusers import AutoencoderKL
@@ -232,3 +232,52 @@ class BaseWorkspace:
         fid_value = fid_score.calculate_frechet_distance(fake_m, fake_s, self.real_m, self.real_s)
 
         return fid_value
+    
+    @torch.inference_mode
+    def sample(self):
+        assert self.cfg.checkpoint is not None, "Please provide the path to the checkpoint"
+        self.load_checkpoint(self.cfg.checkpoint)
+
+        self.scheduler = LinearScheduler(self.cfg.beta_start, self.cfg.beta_end, self.cfg.timesteps)
+        self.sampler = Sampler(self.scheduler.betas, self.cfg.timesteps, self.cfg.sample_timesteps, self.cfg.ddpm)
+
+        path = Path("samples") / self.dataset / f'{datetime.now().strftime("%Y-%m-%d_%H-%M-%S")}_timesteps_{self.cfg.sample_timesteps}'
+        path.mkdir(parents=True, exist_ok=True)
+        paths = [path / f"{i}" for i in range(64)]
+        ref_paths = [path / f"ref_{i}" for i in range(64)]
+        for p in paths + ref_paths:
+            p.mkdir(parents=True, exist_ok=True)
+
+        ref_noise = torch.randn((64, self.channels, self.img_size, self.img_size), device=self.device)
+        noise = ref_noise.clone()
+
+        for i in tqdm(range(self.timesteps - 1, -1, -self.sampler.scaling), desc="Sampling", leave=True):
+            noise = self.sampler.p_sample(self.model, noise, torch.full((64,), i, device=self.device, dtype=torch.long), i)
+            ref_noise = self.sampler.p_sample(self.model.ref_model, ref_noise, torch.full((64,), i, device=self.device, dtype=torch.long), i)
+            if not self.cfg.latent:
+                noise_samps, ref_noise_samps = noise * 0.5 + 0.5, ref_noise * 0.5 + 0.5
+                noise_samps, ref_noise_samps = noise_samps.clip(0, 1), ref_noise_samps.clip(0, 1)
+                noise_samps, ref_noise_samps = noise_samps.cpu().numpy(), ref_noise_samps.cpu().numpy()
+                noise_samps, ref_noise_samps = noise_samps.transpose(0, 2, 3, 1), ref_noise_samps.transpose(0, 2, 3, 1)
+                noise_samps, ref_noise_samps = (noise_samps * 255).astype(np.uint8), (ref_noise_samps * 255).astype(np.uint8)
+                for j in range(64):
+                    cv2.imwrite(paths[j] / f"{i}.png", cv2.cvtColor(noise_samps[j], cv2.COLOR_RGB2BGR) if noise_samps[j].shape[-1] == 3 else noise_samps[j])
+                    cv2.imwrite(ref_paths[j] / f"{i}.png", cv2.cvtColor(ref_noise_samps[j], cv2.COLOR_RGB2BGR) if ref_noise_samps[j].shape[-1] == 3 else ref_noise_samps[j])
+        
+        images, ref_images = noise, ref_noise
+        images, ref_images = images * 0.5 + 0.5, ref_images * 0.5 + 0.5
+        images, ref_images = images.clip(0, 1), ref_images.clip(0, 1)
+        images, ref_images = images.cpu().numpy(), ref_images.cpu().numpy()
+        images, ref_images = images.transpose(0, 2, 3, 1), ref_images.transpose(0, 2, 3, 1)
+        images, ref_images = (images * 255).astype(np.uint8), (ref_images * 255).astype(np.uint8)
+
+        # compose into a 8*8 grid of final images
+        images = np.concatenate([np.concatenate(images[i * 8:(i + 1) * 8], axis=1) for i in range(8)], axis=0)
+        ref_images = np.concatenate([np.concatenate(ref_images[i * 8:(i + 1) * 8], axis=1) for i in range(8)], axis=0)
+
+        cv2.imwrite(path / f"final.png", cv2.cvtColor(images, cv2.COLOR_RGB2BGR) if images.shape[-1] == 3 else images)
+        cv2.imwrite(path / f"ref_final.png", cv2.cvtColor(ref_images, cv2.COLOR_RGB2BGR) if ref_images.shape[-1] == 3 else ref_images)
+
+        print(f"Samples saved to {path}")
+
+
