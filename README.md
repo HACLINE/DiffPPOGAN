@@ -1,5 +1,7 @@
 # Enhancing Pre-trained Diffusion Models with Reinforcement Learning and Adversarial Reward Functions
 
+This is a course project for Computer Vision, second year course of Yao Class at Tsinghua University. This work is far below paper-level, but to prersent an interesting idea.
+
 ## Contributors
 - [Qicheng Xu](https://github.com/HACLINE)
 - [Zehua Wang](https://github.com/patrickwzh)
